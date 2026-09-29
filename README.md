@@ -1,21 +1,65 @@
 # Aurelium
-An end-to-end AI Research Copilot powered by SPECTER/SciBERT embeddings and RAG. Automates scientific paper ingestion, contextual search, novelty scoring, citation impact prediction, and hypothesis generation.
 
-Machine Learning
+An end-to-end AI Research Copilot powered by SPECTER/SciBERT embeddings and RAG. Automates scientific paper ingestion, contextual search, novelty scoring, citation impact prediction, trend forecasting, and hypothesis generation.
+
+Machine Learning · LLM Agents · RAG
 
 ---
 
 ## What this is
 
-Aurelium takes a pile of research papers and turns them into something you can actually reason over. Everything hangs off one idea: if you embed papers well, a lot of hard questions ("is this new?", "will this get cited?", "what's heating up?") become geometry problems in vector space.
+Aurelium takes a pile of research papers and turns them into something you can actually reason over. Enter a topic and get ranked papers, citation-grounded summaries, comparison tables, novelty scores, a trend graph, and suggested research gaps with testable hypotheses.
 
-This README covers only the ML side: data, embeddings, the four models, and the RAG layer. Nothing here about servers or UI.
+The project has two halves that meet at a small, well-defined interface:
 
-## The pipeline
+| Half | Owns | Section |
+|---|---|---|
+| **ML side** | Data, embeddings, relevance ranking, novelty, citation prediction, trend forecasting | [ML side](#ml-side) |
+| **AI side** | Ingestion pipeline, RAG, LLM agents, orchestration, API, LLM evaluation | [AI side](#ai-side) |
+
+The ML side produces numeric signals. The AI side retrieves, reasons, and writes, and reads those signals as grounded context.
+
+## System overview
 
 <img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/d2e2d82a-4e20-497f-af32-7e08dceca3e2" />
 
+```
+topic
+  |
+  v
+query planner --> retriever --> ranker (ML) --> summarizer --> comparator
+                                                                   |
+                          trend series (ML) <-- novelty scores (ML) |
+                                                                   v
+                                          gap analyzer --> hypothesis generator <--> critic
+                                                                   |
+                                                                   v
+                                                    ranked papers, summaries, comparison table,
+                                                    novelty scores, trend graph, gaps, hypotheses
+```
 
+## The ML/AI contract
+
+The two halves talk through four interfaces. Each has a stub implementation returning dummy values, so the AI pipeline runs end to end before the real models are plugged in, and swapping a stub for a real model is a one-line change.
+
+| Interface | Signature | Implemented by |
+|---|---|---|
+| `RankerProtocol` | `rank(query, papers) -> scores` | Retrieval + cross-encoder rerank |
+| `NoveltyProtocol` | `score(paper) -> float` | Novelty detection |
+| `ImpactProtocol` | `predict(paper) -> float` | Citation prediction |
+| `TrendProtocol` | `forecast(topic) -> series` | Trend forecasting |
+
+If the ML side runs as a separate service, these map to HTTP endpoints described in the OpenAPI spec under `ml_interfaces/`.
+
+---
+
+# ML side
+
+This section covers data, embeddings, the four models, and the ML-side retrieval layer. Nothing here about servers or UI.
+
+## The pipeline
+
+Everything hangs off one idea: if you embed papers well, a lot of hard questions ("is this new?", "will this get cited?", "what's heating up?") become geometry problems in vector space.
 
 ## 1. Data collection
 
@@ -89,27 +133,7 @@ The four models each produce a signal. This layer combines them into one summary
 
 These are what the copilot reads when it answers something like "what's worth reading in this area?"
 
-## 6. AI Research Copilot (RAG)
-
-The copilot is a retrieval-augmented LLM sitting on top of everything above.
-
-1. Embed the user's question
-2. Retrieve relevant papers (and chunks of their abstracts) from the index
-3. Attach the ML insights (novelty, predicted impact, topic trend) to each retrieved paper
-4. Feed all of it to the LLM as grounded context
-5. Generate an answer that cites the papers it used
-
-What it can do:
-
-- **RAG Q&A**: answers grounded in retrieved papers
-- **Summarization**: single papers or a whole set
-- **Comparison**: side-by-side of methods, results, and assumptions
-- **Research gaps**: looks at sparse regions of a topic cluster plus what retrieved papers say is unresolved
-- **Hypothesis generation**: proposes ideas by combining findings across neighboring papers, then scores them with the novelty model
-
-Answers should always point back to source papers. If retrieval comes back weak, the copilot should say so instead of making things up.
-
-## Evaluation
+## ML evaluation
 
 | Task | How we check it |
 |---|---|
@@ -117,20 +141,130 @@ Answers should always point back to source papers. If retrieval comes back weak,
 | Novelty | Correlation with expert-labeled novelty (small hand-labeled set) |
 | Citation prediction | Spearman correlation, MAE on log citations, time-based split |
 | Trend forecasting | Backtesting: forecast past months, compare to what happened |
-| RAG | Faithfulness to sources, answer relevance, manual spot checks |
 
-*Results table coming once the full runs finish.*
-
-## Known limitations
+## ML known limitations
 
 - Citation prediction is inherently noisy. Timing, authors' fame, and plain luck matter a lot and the model can't see them.
 - Novelty in embedding space is not the same as scientific novelty. A paper can be far from everything else because it's unusual, or because it's wrong.
 - SPECTER only sees title + abstract, so anything buried in the full text is invisible.
 - Trend forecasts get shaky on small or brand-new topics.
-- The LLM can still hallucinate, even with retrieval. Always check the cited papers.
 
 ## Tech used (ML side)
 
 `PyTorch` · `Hugging Face Transformers` · `SPECTER` · `SciBERT` · `FAISS` · `scikit-learn` · `XGBoost / LightGBM` · `UMAP` · `HDBSCAN` · `Prophet` · `sentence-transformers`
 
+---
 
+# AI side
+
+This section covers ingestion, the RAG layer, the LLM agents, orchestration, the API, and LLM evaluation.
+
+## Architecture
+
+| Layer | Responsibility |
+|---|---|
+| Ingestion | Fetch, deduplicate, and store papers and their metadata |
+| Retrieval | Hybrid search over chunks with citation-verifiable offsets |
+| Agents | Summarize, compare, find gaps, generate and critique hypotheses |
+| Orchestration | LangGraph workflow with per-run state and streamed progress |
+| API | FastAPI service consumed by the frontend |
+| Evaluation | Retrieval, faithfulness, and hypothesis-quality checks |
+
+Default stack: Python 3.11, FastAPI, LangGraph, Postgres with pgvector, Pydantic v2.
+
+### Repository layout
+
+```
+ingestion/
+retrieval/
+agents/
+api/
+ml_interfaces/
+eval/
+```
+
+## 1. Ingestion
+
+Fetches papers by topic from arXiv and Semantic Scholar (title, abstract, authors, year, venue, citation count, references, external IDs) and writes them to Postgres.
+
+- Async `httpx` clients with rate limiting and exponential backoff
+- Deduplication across sources by DOI, then arXiv ID, then normalized title
+- Chunking is abstract-level by default, matching the ML side's title + abstract focus; section-aware chunking of full text is an optional mode when a PDF is available
+- Embedding model is configurable and should match the ML side's SPECTER default so both halves agree on the representation
+- Chunk embeddings live in pgvector for RAG; the paper-level FAISS index stays owned by the ML side
+
+```
+python -m ingestion.run --topic "your topic" --limit 200
+```
+
+Tests use mocked API responses.
+
+## 2. Retrieval (RAG)
+
+- Hybrid search: dense vectors plus BM25 via Postgres full-text
+- Reciprocal rank fusion to merge the two result lists
+- Optional cross-encoder rerank
+- A hook where `RankerProtocol` re-ranks the final candidates
+- Every returned chunk carries `paper_id`, section, and character offsets so citations can be verified
+- Retrieval parameters are configurable and per-stage latency is logged
+- If retrieval quality is weak, the pipeline says so instead of proceeding to generation
+
+## 3. Agents
+
+Every agent uses only retrieved context, returns JSON validated by Pydantic, and uses schema-constrained output rather than free-text parsing.
+
+| Agent | What it does |
+|---|---|
+| Query planner | Expands a topic into 4-6 diverse sub-queries (core methods, benchmarks, surveys, recent work, adjacent fields) |
+| Summarizer | Structured summary (problem, method, datasets, results, limitations) with a chunk citation on every claim |
+| Verifier | Second pass that checks each claim against its cited chunk and removes or flags unsupported ones |
+| Comparator | Picks comparison dimensions dynamically and fills a table; each cell has a citation and confidence, and "not reported" is valid |
+| Gap analyzer | Finds uncovered method/dataset combinations, recurring limitations, and contradictory findings, using novelty scores and the comparison table |
+| Hypothesis generator | Up to 5 hypotheses, each with motivation, concrete experiment (dataset, baseline, metric), expected outcome, and risks |
+| Critic | Scores groundedness, testability, and novelty 1-5, checks against retrieved papers, and sends weak hypotheses back for revision (max 2 rounds) |
+
+## 4. Orchestration
+
+A LangGraph workflow wires the agents together:
+
+`query_planner -> retriever -> ranker -> summarizer -> comparator -> gap_analyzer -> hypothesis_generator <-> critic`
+
+State is persisted per run, and progress events are streamed to the client over SSE.
+
+## 5. API
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /research` | Submit a topic, get a job ID |
+| `GET /research/{id}` | Status and results |
+| `GET /research/{id}/stream` | SSE progress stream |
+
+The result payload contains ranked papers, summaries, the comparison table, novelty scores, trend series, suggested gaps, and hypotheses. The service includes CORS, request validation, and structured logging.
+
+## AI evaluation
+
+| Task | How we check it |
+|---|---|
+| Retrieval | nDCG@10 and Recall@100 on SciFact/BEIR for dense, BM25, hybrid, and reranked configurations |
+| Summary faithfulness | LLM judge on 50 sampled summaries, plus manual spot check |
+| Comparison accuracy | Manual check of cell values and citations on a small sample |
+| Hypothesis quality | LLM-judge rubric for groundedness, testability, and novelty |
+
+*Results table coming once the full runs finish.*
+
+## AI known limitations
+
+- The LLM can still hallucinate, even with retrieval. Always check the cited papers.
+- Citation verification catches unsupported claims but not claims that are supported by a wrong or low-quality source.
+- Hypotheses are starting points for a researcher, not validated findings. Novelty is judged against retrieved papers only, so something may already exist outside the corpus.
+- Abstract-level chunks limit how much detail summaries and comparisons can contain.
+
+## Tech used (AI side)
+
+`Python` · `FastAPI` · `LangGraph` · `Pydantic` · `Postgres` · `pgvector` · `httpx` · `sentence-transformers`
+
+---
+
+## Overall status
+
+Results for both halves are pending the full evaluation runs.
