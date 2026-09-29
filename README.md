@@ -133,14 +133,4 @@ Answers should always point back to source papers. If retrieval comes back weak,
 
 `PyTorch` · `Hugging Face Transformers` · `SPECTER` · `SciBERT` · `FAISS` · `scikit-learn` · `XGBoost / LightGBM` · `UMAP` · `HDBSCAN` · `Prophet` · `sentence-transformers`
 
-## Roadmap
 
-- [ ] Try SPECTER2 and compare against SPECTER
-- [ ] Fine-tune embeddings on domain-specific subsets
-- [ ] Use the citation graph directly (GNN) instead of only embeddings
-- [ ] Better calibration for the novelty score
-- [ ] Automatic evaluation for hypothesis quality
-
-## Acknowledgements
-
-Thanks to the authors of SPECTER and SciBERT (Allen Institute for AI), and to arXiv, Semantic Scholar, and PubMed for keeping their data accessible.
