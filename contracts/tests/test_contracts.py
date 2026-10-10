@@ -5,6 +5,7 @@ from contracts.schemas.models import (
     Paper,
     Chunk,
     Summary,
+    Claim,
     ComparisonCell,
     ComparisonTable,
     GapReport,
@@ -166,6 +167,21 @@ class TestSchemasJsonRoundtrip(unittest.TestCase):
         json_data = summary.model_dump_json()
         recovered = Summary.model_validate_json(json_data)
         self.assertEqual(summary, recovered)
+
+    def test_claim_schema_roundtrip(self):
+        claim = Claim(
+            id="claim_001",
+            statement="DPO eliminates the need for fitting a standalone reward model.",
+            paper_id="arxiv:2305.18290",
+            chunk_id="chunk_2305_001",
+            quote="We show how to optimize language models directly from preferences without explicit reward modeling.",
+            confidence=0.98,
+        )
+        json_data = claim.model_dump_json()
+        recovered = Claim.model_validate_json(json_data)
+        self.assertEqual(claim, recovered)
+        self.assertEqual(recovered.confidence, 0.98)
+        self.assertEqual(recovered.chunk_id, "chunk_2305_001")
 
     def test_comparison_cell_and_table_roundtrip(self):
         cell_1 = ComparisonCell(

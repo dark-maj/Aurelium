@@ -113,6 +113,33 @@ class Summary(BaseContract):
     )
 
 
+class Claim(BaseContract):
+    """
+    Atomic factual claim extracted from literature with citation provenance.
+    Guarantees every asserted finding is traceable to a specific chunk or paper.
+    """
+    id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        description="Unique identifier for the claim.",
+    )
+    statement: str = Field(..., description="Factual assertion or empirical finding.")
+    paper_id: str = Field(..., description="Identifier of the source paper.")
+    chunk_id: Optional[str] = Field(
+        None,
+        description="Identifier of the specific source chunk grounding the claim.",
+    )
+    quote: Optional[str] = Field(
+        None,
+        description="Verbatim excerpt supporting the assertion.",
+    )
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for claim extraction (0.0 to 1.0).",
+    )
+
+
 class ComparisonCell(BaseContract):
     """
     Single cell in a multi-paper comparison matrix with citation traceability.
