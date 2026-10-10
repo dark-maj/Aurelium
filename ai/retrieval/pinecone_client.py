@@ -104,11 +104,15 @@ class PineconeVectorClient:
 
         if client_instance is not None:
             self._client = client_instance
+            self._index = self._client.Index(self.index_name)
         else:
-            from pinecone import Pinecone  # type: ignore
-            self._client = Pinecone(api_key=self.api_key)
-
-        self._index = self._client.Index(self.index_name)
+            try:
+                from pinecone import Pinecone  # type: ignore
+                self._client = Pinecone(api_key=self.api_key)
+                self._index = self._client.Index(self.index_name)
+            except (ImportError, Exception):
+                self._client = None
+                self._index = None
 
     async def ensure_index_ready(self) -> None:
         """Asynchronously runs ensure_pinecone_index."""
