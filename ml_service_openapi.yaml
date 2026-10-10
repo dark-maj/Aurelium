@@ -1,0 +1,431 @@
+openapi: 3.0.3
+info:
+  title: Aurelium ML Service API
+  description: >
+    Machine Learning Microservice contract for the Aurelium AI Research Copilot.
+    Exposes endpoints for relevance reranking, paper novelty detection,
+    citation impact prediction, and topic trend forecasting.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8001
+    description: Local development ML service
+  - url: https://ml.aurelium.internal
+    description: Production internal cluster
+
+paths:
+  /ml/v1/ranking:
+    post:
+      summary: Relevance Ranking / Reranking
+      description: >
+        Takes a search query and a batch of candidate research papers, computing
+        relevance scores using cross-encoder reranking or SPECTER dot product.
+      operationId: rankPapers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RankRequest'
+      responses:
+        '200':
+          description: Successful ranking calculation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/novelty:
+    post:
+      summary: Novelty Scoring
+      description: >
+        Calculates how novel a paper is relative to historical literature in the vector space
+        (1 - mean cosine similarity to prior k-nearest neighbors).
+      operationId: scoreNovelty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoveltyRequest'
+      responses:
+        '200':
+          description: Successful novelty score calculation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoveltyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/impact:
+    post:
+      summary: Citation Impact Prediction
+      description: >
+        Predicts future citations and percentile velocity using paper embedding,
+        venue, author count, and novelty indicators.
+      operationId: predictImpact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpactRequest'
+      responses:
+        '200':
+          description: Successful impact prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/trends/forecast:
+    post:
+      summary: Research Trend Forecasting
+      description: >
+        Runs time-series forecasting (Prophet/ARIMA over semantic clusters)
+        to forecast topic trajectory, growth rate, and emerging status.
+      operationId: forecastTrend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrendRequest'
+      responses:
+        '200':
+          description: Successful trend forecast
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/health:
+    get:
+      summary: ML Model Readiness and Health Check
+      description: Returns health status and status of loaded model weights.
+      operationId: checkHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    CandidatePaperInput:
+      type: object
+      required:
+        - id
+        - title
+        - abstract
+      properties:
+        id:
+          type: string
+          example: "2305.18290"
+        title:
+          type: string
+          example: "Direct Preference Optimization: Your Language Model is Secretly a Reward Model"
+        abstract:
+          type: string
+          example: "While recent advances in language modeling have yielded impressive conversational abilities..."
+        embedding:
+          type: array
+          description: Optional 768-dim SPECTER/SciBERT embedding vector
+          items:
+            type: float
+            format: float
+
+    RankRequest:
+      type: object
+      required:
+        - query
+        - papers
+      properties:
+        query:
+          type: string
+          example: "preference optimization algorithms without reinforcement learning"
+        papers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CandidatePaperInput'
+
+    RankedItem:
+      type: object
+      required:
+        - paper_id
+        - score
+        - rank
+      properties:
+        paper_id:
+          type: string
+          example: "2305.18290"
+        score:
+          type: number
+          format: float
+          description: Normalized relevance score in [0.0, 1.0]
+          example: 0.9421
+        rank:
+          type: integer
+          example: 1
+
+    RankResponse:
+      type: object
+      required:
+        - scores
+        - ranked_items
+      properties:
+        scores:
+          type: array
+          description: Scores ordered parallel to the input papers array
+          items:
+            type: number
+            format: float
+          example: [0.9421, 0.6512, 0.4120]
+        ranked_items:
+          type: array
+          description: Sorted list of papers by relevance descending
+          items:
+            $ref: '#/components/schemas/RankedItem'
+
+    NoveltyRequest:
+      type: object
+      required:
+        - id
+        - title
+        - abstract
+      properties:
+        id:
+          type: string
+          example: "1706.03762"
+        title:
+          type: string
+          example: "Attention Is All You Need"
+        abstract:
+          type: string
+          example: "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks..."
+        year:
+          type: integer
+          example: 2017
+        published_date:
+          type: string
+          format: date-time
+          example: "2017-06-12T00:00:00Z"
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+
+    NoveltyResponse:
+      type: object
+      required:
+        - paper_id
+        - novelty_score
+      properties:
+        paper_id:
+          type: string
+          example: "1706.03762"
+        novelty_score:
+          type: number
+          format: float
+          description: Score from 0.0 (dense redundant cluster) to 1.0 (highly novel/outlier)
+          example: 0.8872
+        nearest_prior_distance:
+          type: number
+          format: float
+          description: 1 - mean cosine similarity to k-nearest prior publications
+          example: 0.8872
+        percentile:
+          type: number
+          format: float
+          description: Percentile against entire field publication distribution
+          example: 98.4
+
+    ImpactRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: "2005.14165"
+        authors_count:
+          type: integer
+          default: 1
+          example: 31
+        venue:
+          type: string
+          example: "NeurIPS 2020"
+        fields_of_study:
+          type: array
+          items:
+            type: string
+          example: ["Computer Science", "Artificial Intelligence"]
+        citation_count:
+          type: integer
+          default: 0
+          example: 2450
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+
+    ImpactResponse:
+      type: object
+      required:
+        - paper_id
+        - predicted_citations
+      properties:
+        paper_id:
+          type: string
+          example: "2005.14165"
+        predicted_citations:
+          type: number
+          format: float
+          description: Predicted future citation count
+          example: 4850.5
+        impact_tier:
+          type: string
+          enum: [low, moderate, high, breakthrough]
+          example: "breakthrough"
+        confidence_interval:
+          type: object
+          properties:
+            lower:
+              type: number
+              format: float
+              example: 3900.0
+            upper:
+              type: number
+              format: float
+              example: 5800.0
+
+    TrendRequest:
+      type: object
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          example: "Direct Preference Optimization and Alignment"
+        horizon_months:
+          type: integer
+          default: 12
+          example: 12
+
+    TrendPoint:
+      type: object
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-01T00:00:00Z"
+        value:
+          type: number
+          format: float
+          example: 48.5
+        lower_bound:
+          type: number
+          format: float
+          example: 41.2
+        upper_bound:
+          type: number
+          format: float
+          example: 56.1
+
+    TrendResponse:
+      type: object
+      required:
+        - topic
+        - historical_points
+        - forecast_points
+        - growth_rate
+        - is_emerging
+      properties:
+        topic:
+          type: string
+          example: "Direct Preference Optimization and Alignment"
+        growth_rate:
+          type: number
+          format: float
+          description: Forecasted annual compound growth percentage
+          example: 42.8
+        is_emerging:
+          type: boolean
+          example: true
+        historical_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        forecast_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - models_loaded
+      properties:
+        status:
+          type: string
+          example: "ok"
+        models_loaded:
+          type: object
+          properties:
+            ranking:
+              type: boolean
+              example: true
+            novelty:
+              type: boolean
+              example: true
+            impact:
+              type: boolean
+              example: true
+            trends:
+              type: boolean
+              example: true
+
+    ErrorDetail:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          example: "Invalid vector dimensions: expected 768, received 512."
+
+  responses:
+    BadRequest:
+      description: Invalid payload or incompatible embeddings
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+    InternalError:
+      description: Model inference failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
