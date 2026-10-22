@@ -149,6 +149,35 @@ These are what the copilot reads when it answers something like "what's worth re
 - SPECTER only sees title + abstract, so anything buried in the full text is invisible.
 - Trend forecasts get shaky on small or brand-new topics.
 
+## Dataset
+
+The ML side uses a balanced, reproducible corpus sampled from the OpenAlex Works API covering the Artificial Intelligence subfield (`primary_topic.subfield.id:1702`).
+
+### Sampling Strategy
+- **Scope & Window**: 2015 through 2023, English language (`language:en`).
+- **Quota & Seed**: Exactly 5,000 papers per year sampled pseudo-randomly with fixed `seed=42`, totaling ~45,000 papers.
+- **Paging**: Basic page-based pagination (`page=1..25`, `per-page=200`). OpenAlex does not support cursor paging when using the `sample` parameter.
+- **Deduplication**: Deduplicated across pages by OpenAlex entity `id`.
+- **Growth Masking & True Volumes**: The uniform 5k/year sample intentionally hides real-world publication growth so representation models are not overwhelmed by recent years. True historical population counts are collected separately via an OpenAlex `group_by=publication_year` call and saved to `year_counts.csv`, serving as ground-truth volumes for Phase 7 trend forecasting.
+
+### Fields and Leakage Prevention
+To prevent target and temporal leakage into Phase 2 (citation prediction), all cumulative impact and forward-looking metrics are strictly excluded during ingestion:
+
+| Category | Fields | Note |
+|---|---|---|
+| **Preserved (12 fields)** | `id`, `title`, `abstract`, `publication_date`, `publication_year`, `type`, `language`, `referenced_works`, `counts_by_year`, `topic`, `subfield`, `field` | `abstract` reconstructed from `abstract_inverted_index`; `counts_by_year` is preserved solely as the label source for Phase 2. |
+| **Leakage Banned** | `cited_by_count`, `fwci`, `citation_normalized_percentile`, `cited_by_percentile_year`, `related_works` | Prohibited from the feature store to prevent data leakage. |
+
+### Output Artifacts
+- `papers.jsonl`: Line-delimited JSON streaming output with 12 flat fields per record.
+- `year_counts.csv`: Historical publication counts per year for 2015–2023 (Phase 7 ground truth).
+- `manifest.json`: Provenance metadata recording query filters, seed, counts, timestamps, and package versions (no credentials).
+- `data_report.md`: Summary report detailing missingness rates, publication types, and top topics.
+
+### Reproduction
+- **Locally**: Run `python -m src.openalex_collect --test` (lightweight verification) or `python collect.py` from `ml/`. Credentials (`OPENALEX_API_KEY`, `OPENALEX_EMAIL`) are loaded via `ml/.env`.
+- **On Kaggle**: Run `ml/notebooks/aurelium-01-data-collection.ipynb` with Internet access enabled. Save the notebook output as a Kaggle Dataset named `aurelium-openalex-ai-2015-2023` for downstream phases.
+
 ## Tech used (ML side)
 
 `PyTorch` · `Hugging Face Transformers` · `SPECTER` · `SciBERT` · `FAISS` · `scikit-learn` · `XGBoost / LightGBM` · `UMAP` · `HDBSCAN` · `Prophet` · `sentence-transformers`
