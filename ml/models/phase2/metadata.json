@@ -1,0 +1,114 @@
+{
+  "phase": 2,
+  "task": "citation_prediction",
+  "created_at": "2026-10-23T10:13:31.157634+00:00",
+  "seed": 42,
+  "splits": {
+    "train_years": [
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020
+    ],
+    "val_years": [
+      2021
+    ],
+    "test_years": [
+      2022,
+      2023
+    ],
+    "train_size": 335,
+    "val_size": 55,
+    "test_size": 110
+  },
+  "features": {
+    "specter_dim": 768,
+    "metadata_features": [
+      "n_referenced_works",
+      "title_char_len",
+      "abstract_char_len",
+      "has_abstract",
+      "publication_month",
+      "type_article",
+      "type_conference-paper",
+      "type_preprint",
+      "field_Computer Science",
+      "subfield_Artificial Intelligence",
+      "topic_Advanced Graph Neural Networks",
+      "topic_Natural Language Processing Techniques",
+      "topic_Privacy-Preserving Deep Learning",
+      "topic_Reinforcement Learning for Robotics",
+      "topic_Transformer Architectures in Computer Vision"
+    ],
+    "total_dim": 783
+  },
+  "metrics": {
+    "baseline_median": {
+      "val": {
+        "spearman": 0.0,
+        "mae": 0.6181833893087746,
+        "precision_top10": 0.2
+      },
+      "test": {
+        "spearman": 0.0,
+        "mae": 0.6498603845666413,
+        "precision_top10": 0.09090909090909091
+      }
+    },
+    "lightgbm": {
+      "val": {
+        "spearman": -0.03728037682677991,
+        "mae": 0.6260593241681431,
+        "precision_top10": 0.2
+      },
+      "test": {
+        "spearman": 0.07267651173855456,
+        "mae": 0.6600208633889526,
+        "precision_top10": 0.09090909090909091
+      }
+    },
+    "lightgbm_pca": {
+      "val": {
+        "spearman": -0.06554012144053653,
+        "mae": 0.6283863643060023,
+        "precision_top10": 0.0
+      },
+      "test": {
+        "spearman": 0.19835951884705147,
+        "mae": 0.6558276037021028,
+        "precision_top10": 0.0
+      }
+    },
+    "pytorch_mlp": {
+      "val": {
+        "spearman": 0.19452708939146346,
+        "mae": 0.6080461084749729,
+        "precision_top10": 0.0
+      },
+      "test": {
+        "spearman": 0.1372153599257133,
+        "mae": 0.6608433735172367,
+        "precision_top10": 0.36363636363636365
+      }
+    }
+  },
+  "cohort_metrics_test": {
+    "2022": {
+      "spearman": 0.09235658054897704,
+      "mae": 0.6463282421497373,
+      "precision_top10": 0.0
+    },
+    "2023": {
+      "spearman": 0.011664025794201054,
+      "mae": 0.6737134846281679,
+      "precision_top10": 0.0
+    }
+  },
+  "environment": {
+    "python": "3.14.2 (tags/v3.14.2:df79316, Dec  5 2025, 17:18:21) [MSC v.1944 64 bit (AMD64)]",
+    "lightgbm": "4.7.0",
+    "torch": "2.14.1+cpu"
+  }
+}

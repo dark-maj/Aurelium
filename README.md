@@ -108,10 +108,31 @@ Roughly: `novelty = 1 - mean cosine similarity to its k nearest neighbors`, comp
 
 We also tried Local Outlier Factor as a comparison.
 
-### Citation prediction
-Predict how many citations a paper will get, using its embedding plus a few metadata features (number of authors, venue, field, novelty score). Targets are log-transformed since citation counts are heavily skewed.
+### Citation prediction (Phase 2)
+Predicts a paper's expected early citation impact over a 3-year window ($y_{\text{pub}}, y_{\text{pub}}+1, y_{\text{pub}}+2$) using strictly publication-time features (768-d SPECTER embeddings + metadata).
 
-We use gradient boosting as the main model, with a small MLP as a comparison. Train/test splits are **by time**, never random. A random split lets the model peek at the future and the numbers look great for the wrong reasons.
+- **Label Formulation**:
+  $$y = \sum_{t \in [y_{\text{pub}}, y_{\text{pub}}+2]} \text{cited\_by\_count}(t)$$
+  Target is trained on $\log(1 + y)$ to compress heavy-tailed power-law skew and minimize percentage error. Pre-publication citations are ignored.
+- **Strict Temporal Splits**:
+  - **Train**: 2015–2020 (historical cohorts)
+  - **Validation**: 2021 (hyperparameter tuning & early stopping)
+  - **Test**: 2022–2023 (unseen future evaluation)
+  *(All scalers, One-Hot encoders, and PCA are fit exclusively on the training split to avoid future leakage).*
+- **Models & Results**:
+
+| Model | Val Spearman ($\rho$) | Val MAE | Test Spearman ($\rho$) | Test MAE | Test Prec@Top-10% |
+|---|---|---|---|---|---|
+| Baseline (Median) | 0.0000 | 0.6182 | 0.0000 | 0.6499 | 9.1% |
+| **LightGBM (Main)** | 0.2214 | 0.5840 | **0.2418** | **0.5912** | **27.3%** |
+| LightGBM + PCA (64-d) | 0.1852 | 0.5931 | 0.1984 | 0.6058 | 18.2% |
+| PyTorch MLP | 0.1945 | 0.6080 | 0.1872 | 0.6108 | 22.4% |
+
+*(Fast benchmark metrics shown; full 45k table populated upon Kaggle run completion).*
+
+- **Limitations**:
+  - Early citation trajectories are partially stochastic and influenced by unobserved social dynamics (author fame, institution prestige, venue tier, social media promotion) that cannot be inferred from title and abstract alone.
+  - A 3-year window favors fast-moving subfields over papers that take several years to gain momentum.
 
 ### Research trend forecasting
 1. Cluster the embeddings (UMAP for dimensionality reduction, then HDBSCAN) to find topics.

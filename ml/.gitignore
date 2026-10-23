@@ -2,6 +2,7 @@
 data/
 *.jsonl
 *.csv
+*.npy
 reports/
 checkpoints/
 __pycache__/
