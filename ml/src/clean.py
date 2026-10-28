@@ -339,6 +339,12 @@ def earliest_citation_year(df: pd.DataFrame) -> Optional[int]:
     return min(years) if years else None
 
 
+def latest_citation_year(df: pd.DataFrame) -> Optional[int]:
+    """Latest year in any counts_by_year: the collection year, so it is only partially counted."""
+    years = [e["year"] for cby in df["counts_by_year"] if isinstance(cby, list) for e in cby if e.get("year")]
+    return max(years) if years else None
+
+
 def citation_label(df: pd.DataFrame, log: Log) -> pd.DataFrame:
     """Add the 3-year label via compute_citation_label, plus flags for known label problems."""
     df = df.copy()
@@ -360,6 +366,7 @@ def citation_label(df: pd.DataFrame, log: Log) -> pd.DataFrame:
     truncated = df.loc[df["window_truncated"], "publication_year"].value_counts().sort_index()
     log["citation_label"] = {
         "earliest_citation_year_in_data": earliest,
+        "latest_citation_year_in_data": latest_citation_year(df),
         "rows_with_pre_pub_citations": int((df["pre_pub_citations"] > 0).sum()),
         "pre_pub_citations_total": int(df["pre_pub_citations"].sum()),
         "rows_with_impossible_citations": int(df["impossible_citations"].sum()),
