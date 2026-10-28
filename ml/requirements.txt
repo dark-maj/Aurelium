@@ -8,3 +8,4 @@ matplotlib==3.11.2
 scipy==1.18.1
 sentence-transformers==6.2.0
 torch==2.14.1
+pytest==9.2.0
