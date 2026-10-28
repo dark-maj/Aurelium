@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurelium-contracts"
+version = "0.1.0"
+description = "Shared contract layer between ai/ and ml/ halves of Aurelium"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+]
+
+[tool.setuptools.package-dir]
+"contracts" = "."
+"contracts.schemas" = "schemas"
+"contracts.interfaces" = "interfaces"
+
+[tool.setuptools]
+packages = ["contracts", "contracts.schemas", "contracts.interfaces"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

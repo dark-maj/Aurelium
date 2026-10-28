@@ -1,0 +1,455 @@
+openapi: 3.0.3
+info:
+  title: Aurelium ML Service API
+  description: >
+    Official contract between ai/ and ml/ halves of Aurelium.
+    Defines the HTTP endpoints exposed if the ML models run as an independent microservice,
+    directly mapping to RankerProtocol, NoveltyProtocol, ImpactProtocol, and TrendProtocol.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8001
+    description: Local development ML service
+  - url: https://ml.aurelium.internal
+    description: Production internal cluster
+
+paths:
+  /ml/v1/ranking:
+    post:
+      summary: Relevance Ranking (RankerProtocol)
+      description: >
+        Reranks candidate papers against a search query using cross-encoder
+        or dense embedding representations.
+      operationId: rankPapers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RankRequest'
+      responses:
+        '200':
+          description: Parallel relevance scores and sorted ranking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/novelty:
+    post:
+      summary: Novelty Scoring (NoveltyProtocol)
+      description: >
+        Calculates novelty of a paper against prior literature in vector space
+        (1 - mean cosine similarity to prior k-NN). Ensures no future-leakage.
+      operationId: scoreNovelty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoveltyRequest'
+      responses:
+        '200':
+          description: Quantitative novelty score and distance metric
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoveltyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/impact:
+    post:
+      summary: Citation Impact Prediction (ImpactProtocol)
+      description: >
+        Predicts future citations and percentile velocity using paper embedding,
+        metadata features, venue, and author signals.
+      operationId: predictImpact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpactRequest'
+      responses:
+        '200':
+          description: Predicted future citation count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/trends/forecast:
+    post:
+      summary: Research Trend Forecasting (TrendProtocol)
+      description: >
+        Generates historical and forward-looking time-series forecasts
+        over semantic clusters using Prophet / ARIMA models.
+      operationId: forecastTrend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrendRequest'
+      responses:
+        '200':
+          description: Time-series trajectory matching TrendSeries contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ml/v1/health:
+    get:
+      summary: Service Readiness and Health Check
+      description: Checks service availability and model weights readiness.
+      operationId: checkHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    PaperInput:
+      type: object
+      required:
+        - id
+        - title
+        - abstract
+      properties:
+        id:
+          type: string
+          example: "arxiv:2305.18290"
+        title:
+          type: string
+          example: "Direct Preference Optimization: Your Language Model is Secretly a Reward Model"
+        abstract:
+          type: string
+          example: "While recent advances in language modeling have yielded impressive conversational abilities..."
+        authors:
+          type: array
+          items:
+            type: string
+          example: ["Rafael Rafailov", "Archit Sharma", "Eric Mitchell"]
+        venue:
+          type: string
+          example: "NeurIPS 2023"
+        year:
+          type: integer
+          example: 2023
+        published_date:
+          type: string
+          format: date-time
+          example: "2023-05-29T00:00:00Z"
+        doi:
+          type: string
+          example: "10.48550/arXiv.2305.18290"
+        arxiv_id:
+          type: string
+          example: "2305.18290"
+        semantic_scholar_id:
+          type: string
+          example: "204e3073870fae3f05bcbc65834984aa3125cc64"
+        citation_count:
+          type: integer
+          default: 0
+          example: 850
+        fields_of_study:
+          type: array
+          items:
+            type: string
+          example: ["Computer Science", "Artificial Intelligence"]
+        embedding:
+          type: array
+          description: 768-dimensional normalized SPECTER/SciBERT vector
+          items:
+            type: number
+            format: float
+
+    RankRequest:
+      type: object
+      required:
+        - query
+        - papers
+      properties:
+        query:
+          type: string
+          example: "preference optimization algorithms without reinforcement learning"
+        papers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaperInput'
+
+    RankedItem:
+      type: object
+      required:
+        - paper_id
+        - score
+        - rank
+      properties:
+        paper_id:
+          type: string
+          example: "arxiv:2305.18290"
+        score:
+          type: number
+          format: float
+          description: Normalized relevance score in [0.0, 1.0]
+          example: 0.9421
+        rank:
+          type: integer
+          example: 1
+
+    RankResponse:
+      type: object
+      required:
+        - scores
+        - ranked_items
+      properties:
+        scores:
+          type: array
+          description: Scores strictly ordered parallel to the input papers array
+          items:
+            type: number
+            format: float
+          example: [0.9421, 0.6512, 0.4120]
+        ranked_items:
+          type: array
+          description: Sorted list of papers in descending order of relevance
+          items:
+            $ref: '#/components/schemas/RankedItem'
+
+    NoveltyRequest:
+      type: object
+      required:
+        - id
+        - title
+        - abstract
+      properties:
+        id:
+          type: string
+          example: "arxiv:1706.03762"
+        title:
+          type: string
+          example: "Attention Is All You Need"
+        abstract:
+          type: string
+          example: "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks..."
+        year:
+          type: integer
+          example: 2017
+        published_date:
+          type: string
+          format: date-time
+          example: "2017-06-12T00:00:00Z"
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+
+    NoveltyResponse:
+      type: object
+      required:
+        - paper_id
+        - score
+      properties:
+        paper_id:
+          type: string
+          example: "arxiv:1706.03762"
+        score:
+          type: number
+          format: float
+          description: Novelty score in [0.0, 1.0] (1 - mean cosine similarity to prior k-NN)
+          example: 0.8872
+        nearest_prior_distance:
+          type: number
+          format: float
+          example: 0.8872
+        percentile:
+          type: number
+          format: float
+          example: 98.4
+        prior_papers_count:
+          type: integer
+          example: 1420
+
+    ImpactRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: "arxiv:2005.14165"
+        authors:
+          type: array
+          items:
+            type: string
+          example: ["Tom B. Brown", "Benjamin Mann"]
+        venue:
+          type: string
+          example: "NeurIPS 2020"
+        fields_of_study:
+          type: array
+          items:
+            type: string
+          example: ["Computer Science"]
+        citation_count:
+          type: integer
+          default: 0
+          example: 12000
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+
+    ImpactResponse:
+      type: object
+      required:
+        - paper_id
+        - predicted_citations
+      properties:
+        paper_id:
+          type: string
+          example: "arxiv:2005.14165"
+        predicted_citations:
+          type: number
+          format: float
+          description: Predicted future citation count
+          example: 24500.0
+        impact_tier:
+          type: string
+          enum: [low, moderate, high, breakthrough]
+          example: "breakthrough"
+
+    TrendRequest:
+      type: object
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          example: "Direct Preference Optimization"
+        horizon_months:
+          type: integer
+          default: 6
+          example: 6
+
+    TrendPoint:
+      type: object
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        value:
+          type: number
+          format: float
+          example: 48.5
+        lower_bound:
+          type: number
+          format: float
+          example: 41.2
+        upper_bound:
+          type: number
+          format: float
+          example: 56.1
+
+    TrendResponse:
+      type: object
+      required:
+        - topic
+        - historical_points
+        - forecast_points
+        - growth_rate
+        - is_emerging
+      properties:
+        topic:
+          type: string
+          example: "Direct Preference Optimization"
+        growth_rate:
+          type: number
+          format: float
+          description: Annual compound growth percentage
+          example: 32.5
+        is_emerging:
+          type: boolean
+          example: true
+        historical_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        forecast_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - models_loaded
+      properties:
+        status:
+          type: string
+          example: "ok"
+        models_loaded:
+          type: object
+          properties:
+            ranking:
+              type: boolean
+              example: true
+            novelty:
+              type: boolean
+              example: true
+            impact:
+              type: boolean
+              example: true
+            trends:
+              type: boolean
+              example: true
+
+    ErrorDetail:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          example: "Invalid input dimensions: expected 768-dim embedding."
+
+  responses:
+    BadRequest:
+      description: Invalid payload or incompatible embedding vector
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+    InternalError:
+      description: Model inference failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
