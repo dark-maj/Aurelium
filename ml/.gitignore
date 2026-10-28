@@ -1,1 +1,11 @@
 .env
+data/
+*.jsonl
+*.csv
+*.npy
+reports/
+checkpoints/
+__pycache__/
+*.py[cod]
+venv/
+.ipynb_checkpoints/
