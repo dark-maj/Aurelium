@@ -61,8 +61,21 @@ bookkeeping or future information). **Label-only** = used to build the target, n
 | `cited_by_percentile_year` | No | Banned | Citation percentile within the year, computed from future citations |
 | `related_works` | No | Banned | Computed by OpenAlex against today's corpus, including papers published after this one |
 
-## Open questions
+## Decisions
 
-1. Should `venue*` be a feature at all, or only `venue_type` restricted to papers whose type is not `preprint`?
-2. `topic`/`subfield`/`field` are already Phase 2 features. Keep them (Caution) or rerun Phase 2 without them to measure how much they contribute?
-3. `pre_pub_citations`: keep as No, or allow it as "preprint popularity before formal publication"?
+1. **Venue.** Decision: `venue_canonical` and `venue_type` are allowed as Caution features, and every model
+   that uses them reports its score with and without them (an ablation). Because: for most papers the venue
+   is known at publication, so banning it loses honest signal; a gain far above other metadata features is
+   the sign that it leaks post-publication acceptance. Restricting to non-preprints does not work, because
+   `type` can also be updated after acceptance.
+2. **Topic.** Decision: keep `topic`, `subfield` and `field` as Caution features and include them in the same
+   ablation. Because: Phase 2 already uses them, the hindsight risk is real but small, and one ablation run
+   measures it instead of guessing.
+3. **Pre-publication citations.** Decision: `pre_pub_citations` is not a feature. Because: it comes from the
+   label source and depends on preprint/journal merges OpenAlex made later; it affects few papers, so the
+   possible gain is small and the leakage risk is high.
+
+## Rule for new features
+
+Before adding any column as a feature, answer in this table: could its stored value have changed after the
+publication date? If yes or unsure, mark it Caution and add it to the ablation.
